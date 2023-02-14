@@ -27,8 +27,10 @@ import time
 
 try:
     from rpmautospec import specfile_uses_rpmautospec
+    from rpmautospec.subcommands.release import calculate_release_number
 except ImportError:
     specfile_uses_rpmautospec = None
+    calculate_release_number = None
 
 __version__ = "1.0.13"
 
@@ -391,6 +393,7 @@ the Free Software Foundation; either version 2 of the License, or
                 check_autochangelog=True
             )
 
+        changed = False
         if uses_rpmautospec_autorelease:
             if opts.new:
                 print("RPMAutoSpec usage detected, only setting Version.")
@@ -413,8 +416,6 @@ the Free Software Foundation; either version 2 of the License, or
         if changed:
             # Write out changed version or release if changed.
             s.writeFile(aspec)
-        else:
-            continue
 
         if uses_rpmautospec_autochangelog:
             print("RPMAutospec %autochangelog is used, no need to add %changelog entry.")
@@ -427,6 +428,10 @@ the Free Software Foundation; either version 2 of the License, or
         # Get EVR for changelog entry.
         cmd = ("rpm", "-q", "--specfile", "--define", "dist %{nil}",
                "--qf=%|epoch?{%{epoch}:}:{}|%{version}-%{release}\n", aspec)
+        if not opts.new and calculate_release_number and uses_rpmautospec_autorelease:
+            # Rpmautospec doesn’t see a change yet so the calculated number will be one too low.
+            release_number = calculate_release_number(aspec) + 1
+            cmd += ("--define", "_rpmautospec_release_number {}".format(release_number))
         popen = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         evr = popen.communicate()[0].split(b"\n")[0]
         if sys.version_info[0] > 2:
