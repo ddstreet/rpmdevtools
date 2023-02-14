@@ -378,19 +378,24 @@ the Free Software Foundation; either version 2 of the License, or
             # Not actually a parser error, but... meh.
             parser.error(e)
 
-        uses_rpmautospec = False
+        uses_rpmautospec_autorelease = uses_rpmautospec_autochangelog = False
         if specfile_uses_rpmautospec:
-            uses_rpmautospec = specfile_uses_rpmautospec(
+            uses_rpmautospec_autorelease = specfile_uses_rpmautospec(
                 specpath=s.filename,
                 check_autorelease=True,
                 check_autochangelog=False
             )
+            uses_rpmautospec_autochangelog = specfile_uses_rpmautospec(
+                specpath=s.filename,
+                check_autorelease=False,
+                check_autochangelog=True
+            )
 
-        if uses_rpmautospec:
+        if uses_rpmautospec_autorelease:
             if opts.new:
                 print("RPMAutoSpec usage detected, only setting Version.")
                 changed = s.newVersion(opts.new, set_release=False)
-            else:
+            elif uses_rpmautospec_autochangelog:
                 print("RPMAutoSpec usage detected, not changing the spec file.")
                 continue
         else:
@@ -405,14 +410,14 @@ the Free Software Foundation; either version 2 of the License, or
 
                 changed = True
 
-        # If we didn't change anything, no need to write and modify the
-        # changelog.
         if changed:
+            # Write out changed version or release if changed.
             s.writeFile(aspec)
         else:
             continue
 
-        if uses_rpmautospec:
+        if uses_rpmautospec_autochangelog:
+            print("RPMAutospec %autochangelog is used, no need to add %changelog entry.")
             continue
 
         if not s.checkChangelogPresence():
