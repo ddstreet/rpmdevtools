@@ -193,6 +193,15 @@ def get_args() -> Dict[str, Any]:
         help="output debug info, don't clean up when done",
     )
 
+    misc.add_argument(
+        "--http-header",
+        "-H",
+        action="append",
+        dest="headers",
+        default=[],
+        help="Optionally add custom headers",
+    )
+
     specfile = parser.add_argument("specfile", action="store")
 
     if argcomplete:
@@ -266,7 +275,8 @@ def download(url, target, headers=None,
         tracker.on_finish()
 
 
-def get_file(url: str, path: str, force: bool) -> bool:
+def get_file(url: str, path: str, force: bool,
+             headers: Optional[Dict[str, str]] = None) -> bool:
     if os.path.exists(path):
         if force:
             os.remove(path)
@@ -275,7 +285,7 @@ def get_file(url: str, path: str, force: bool) -> bool:
             return False
 
     progress = ProgressTracker(progressbar.DataTransferBar())
-    download(url, path, tracker=progress)
+    download(url, path, tracker=progress, headers=headers)
 
     return True
 
@@ -342,7 +352,8 @@ class Spec:
             self.print_patch(number, value)
 
     @staticmethod
-    def _get_file(value: str, directory: str, force: bool, dry: bool) -> None:
+    def _get_file(value: str, directory: str, force: bool, dry: bool,
+                  headers: Optional[Dict[str, str]] = None) -> None:
         parsed = urlparse(value)
 
         if "#" not in value:
@@ -366,7 +377,7 @@ class Spec:
                 try:
                     print("Downloading: {}".format(value))
                     os.makedirs(directory, exist_ok=True)
-                    really = get_file(value, path, force)
+                    really = get_file(value, path, force, headers=headers)
                     if really:
                         print("Downloaded: {}".format(basename))
 
@@ -384,43 +395,49 @@ class Spec:
                     raise
 
     def get_source(self, number: str, directory: str, force: bool, dry: bool,
-                   value: Optional[str] = None) -> bool:
+                   value: Optional[str] = None,
+                   headers: Optional[Dict[str, str]] = None) -> bool:
         if not value:
             value = self.sources[number]
 
         try:
-            self._get_file(value, directory, force, dry)
+            self._get_file(value, directory, force, dry, headers=headers)
             return False
 
         except IOError:
             return True
 
     def get_patch(self, number: str, directory: str, force: bool, dry: bool,
-                  value: Optional[str] = None) -> bool:
+                  value: Optional[str] = None,
+                  headers: Optional[Dict[str, str]] = None) -> bool:
         if not value:
             value = self.patches[number]
 
         try:
-            self._get_file(value, directory, force, dry)
+            self._get_file(value, directory, force, dry, headers=headers)
             return False
 
         except IOError:
             return True
 
-    def get_sources(self, directory: str, force: bool, dry: bool):
+    def get_sources(self, directory: str, force: bool, dry: bool,
+                    headers: Optional[Dict[str, str]] = None):
         failure = False
 
         for number, value in self.sources.items():
-            if self.get_source(number, directory, force, dry, value):
+            if self.get_source(number, directory, force, dry, value,
+                               headers=headers):
                 failure = True
 
         return failure
 
-    def get_patches(self, directory: str, force: bool, dry: bool):
+    def get_patches(self, directory: str, force: bool, dry: bool,
+                    headers: Optional[Dict[str, str]] = None):
         failure = False
 
         for number, value in self.patches.items():
-            if self.get_patch(number, directory, force, dry, value):
+            if self.get_patch(number, directory, force, dry, value,
+                              headers=headers):
                 failure = True
 
         return failure
@@ -510,6 +527,10 @@ def main() -> int:
     if args["get_files"]:
         force = args["force"]
         dry = args["dry_run"]
+        headers = {}
+        for header in args["headers"]:
+            k, sep, v = header.partition(':')
+            headers[k.strip()] = v.strip()
 
         if args["directory"] and args["sourcedir"]:
             print("Conflicting requests for download directory.")
@@ -532,10 +553,11 @@ def main() -> int:
                     print("No source with number '{}' found.".format(number))
                     continue
 
-                tasks.append((spec.get_source, (number, directory, force, dry)))
+                tasks.append((spec.get_source, (number, directory, force, dry,
+                                                headers)))
 
         elif args["sources"] and not args["patch"]:
-            tasks.append((spec.get_sources, (directory, force, dry)))
+            tasks.append((spec.get_sources, (directory, force, dry, headers)))
 
         if args["patch"]:
             numbers = split_numbers(args["patch"])
@@ -545,10 +567,11 @@ def main() -> int:
                     print("No patch with number '{}' found.".format(number))
                     continue
 
-                tasks.append((spec.get_patch, (number, directory, force, dry)))
+                tasks.append((spec.get_patch, (number, directory, force, dry,
+                                               headers)))
 
         elif args["patches"] and not args["source"]:
-            tasks.append((spec.get_patches, (directory, force, dry)))
+            tasks.append((spec.get_patches, (directory, force, dry, headers)))
 
         failure = False
 
